@@ -2,12 +2,19 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <dirent.h>
 
 #include "common.h"
 #include "tcp_server.h"
 #include "touchpad_listener.h"
 #include "controller.h"
 #include "macro_engine.h"
+
+// cat /proc/bus/input/devices
+#define TOUCHPAD_DEVICE_NAME "FTCS1000:01 2808:0222 Touchpad"
 
 void cleanup(void) {
     running = false;
@@ -27,10 +34,53 @@ void signal_handler(int signo) {
     exit(0);
 }
 
+char* find_touchpad_device() {
+    FILE *fp;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    char *event_path = NULL;
+    bool found_device = false;
+
+    fp = fopen("/proc/bus/input/devices", "r");
+    if (fp == NULL) {
+        perror("Failed to open /proc/bus/input/devices");
+        return NULL;
+    }
+
+    while ((read = getline(&line, &len, fp)) != -1) {
+        if (strstr(line, "N: Name=\"") != NULL && strstr(line, TOUCHPAD_DEVICE_NAME) != NULL) {
+            found_device = true;
+        }
+        if (found_device && strstr(line, "H: Handlers=") != NULL) {
+            char *event = strstr(line, "event");
+            if (event != NULL) {
+                char event_num[3];
+                int i = 0;
+                while (event[5+i] >= '0' && event[5+i] <= '9' && i < 2) {
+                    event_num[i] = event[5+i];
+                    i++;
+                }
+                event_num[i] = '\0';
+
+                event_path = malloc(20);
+                snprintf(event_path, 20, "/dev/input/event%s", event_num);
+                break;
+            }
+        }
+    }
+
+    free(line);
+    fclose(fp);
+    return event_path;
+}
+
 int main(void) {
-    // TODO: driver tcp ile mevcut device'ları listelesin ve event sectirsin.
-    //         cat /proc/bus/input/devices
-    const char *dev = "/dev/input/event11";
+    char *dev = find_touchpad_device();
+    if (dev == NULL) {
+        fprintf(stderr, "Could not find touchpad device\n");
+        exit(EXIT_FAILURE);
+    }
     pthread_t touchpad_thread;
 
     signal(SIGINT, signal_handler);
@@ -41,6 +91,8 @@ int main(void) {
     init_controllers();
     init_macro_engine();
     init_touchpad(dev);
+
+    free(dev); // Free the allocated device path
 
 
     if (pthread_create(&touchpad_thread, NULL, touchpad_event_thread, NULL) != 0) {
