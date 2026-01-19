@@ -2,6 +2,8 @@
 
 Linux touch daemon
 
+![screenshot.png](./images/screenshot.png)
+
 Linux sistem event'leri üzerinden touchpad olaylarını dinler.
 Kullanıcılar kontrol panelinden parmak sayısı, konumu ve
 süresine göre istedikleri touchpad kullanımına göre 
