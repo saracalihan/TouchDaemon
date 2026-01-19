@@ -1,4 +1,4 @@
-# linux-touchpad-driver
+# TouchDaemon
 
 Threads:
 - main(init, start tcp)

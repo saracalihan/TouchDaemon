@@ -6,6 +6,7 @@
 
 int mouse_fd = -1;
 int keyboard_fd = -1;
+Dlls dlls = {0};
 
 int init_mouse(){
     int fd_uinput = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
@@ -64,11 +65,43 @@ void init_shell(){
     // NOP
 }
 
+void init_dll(){
+    DA_INIT(dlls, 2);
+    if(strlen(DLL_PATHS) < 1){
+        printf("dll import skiped.\n");
+        return;
+    }
+    char* path = DLL_PATHS;
+    void* handle = dlopen(path, RTLD_NOW);
+    if(handle == NULL){
+        perror("dll could not opened!");
+        printf("%s\n",dlerror());
+        exit(1);
+    }
+    printf("acıldı\n");
+    Dll d = {
+        .handle = handle,
+        .path = path
+    };
+
+    DA_PUSH(dlls, d);
+
+    printf("'%s' dll imported.\n", path);
+}
+
 void init_controllers(){
     mouse_fd = init_mouse();
     keyboard_fd = init_keyboard();
     init_shell();
+    init_dll();
     sleep(1);
+}
+
+void cleanup_dll(){
+    // if(dlclose(mouse_fd)<0){
+    //     perror("cleanup_mouse");
+    //     exit(EXIT_FAILURE);
+    // }
 }
 
 void cleanup_shell(){
@@ -96,6 +129,7 @@ void cleanup_controllers(){
     cleanup_mouse();
     cleanup_keyboard();
     cleanup_shell();
+    cleanup_dll();
     printf("cleanup_controllers done\n");
 }
 
@@ -207,6 +241,24 @@ int shell_exec(char cmd[CONTROLLER_VALUE_LEN]){
     return 1;
 }
 
+int dll_exec(char* fn_name, char* args){
+    int (*fn)(char*);
+    dlerror();    /* Clear any existing error */
+
+    // TODO: dlls.items boundry kontrolü
+    fn = (int (*)(char*)) dlsym(dlls.items[0].handle, fn_name);
+
+    char* error = dlerror();
+    if (error != NULL) {
+        fprintf(stderr, "%s\n", error);
+        return 0;
+    }
+
+    int res = (*fn)(args);
+    printf("%s('%s'): %d\n", fn_name, args, res);
+    return res;
+}
+
 // TODO: mouse scroll. type 2 (EV_REL), code 8 (REL_WHEEL), value -1/+1
 
 int exec_command(ControllerCommand c){
@@ -276,6 +328,31 @@ int exec_command(ControllerCommand c){
                 return 0;
             }
             break;}
+        case CT_DLL: {
+            if(c.size<=0){
+                printf("[CONTROLLER ERROR]: exec_command invalid dll cmd size\n");
+                return 0;
+            }
+
+            char* args = strchr(c.value, ',');
+            if(!args){
+                printf("[CONTROLLER ERROR]: dll_exec error. Command must have ',' seperator after fn name\n");
+                return 0;
+            }
+            *args = '\0';
+
+            if(dll_exec(c.value, ++args) ==0){
+                printf("[CONTROLLER ERROR]: dll_exec error\n");
+                return 0;
+            }
+
+            // char* c = "hello", *a = "Hello World!";
+            // if(dll_exec(c, a) == 0){
+            //     printf("[CONTROLLER ERROR]: dll_exec error\n");
+            //     return 0;
+            // }
+            break;
+        }
         default:
             printf("[CONTROLLER ERROR]: unknown command controller: '%d'", c.controller);
             return 0;
@@ -288,7 +365,7 @@ int exec_str_command(char* data){
     int controller, size;
     int ps = sscanf(data, format, &controller, &size, value);
     if(ps != 3){
-        printf("[RECV ERROR]: parsing failed. '%s'\n", data);
+        printf("[RECV ERROR]: parsing failed2. '%s'\n", data);
         return -1;
     }
     printf("controller: '%d',size: '%d',value: '%s'\n", controller, size, value);

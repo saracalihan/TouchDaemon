@@ -9,14 +9,30 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
+#include <dlfcn.h>
 #include "common.h"
 
 #define DEVICE_NAME_PREFIX "as-touchpad"
+#define DLL_PATHS "/home/saracalihan/Desktop/projects/touchpad/driver/build/libhello.so"
+
+#define MAX_DLL_PATH_LEN 256
+
+typedef struct {
+    char path[MAX_DLL_PATH_LEN];
+    void* handle;
+} Dll;
+
+typedef struct {
+    Dll* items;
+    int count;
+    int capacity;
+} Dlls;
 
 typedef enum {
     CT_MOUSE=1,
     CT_KEYBOARD,
     CT_SHELL,
+    CT_DLL,
 } ControllerType;
 
 typedef enum {

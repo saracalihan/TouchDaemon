@@ -1,9 +1,16 @@
-# linux-touchpad-controller
+# TouchDaemon
+
+Linux touch daemon
 
 Linux sistem event'leri üzerinden touchpad olaylarını dinler.
 Kullanıcılar kontrol panelinden parmak sayısı, konumu ve
 süresine göre istedikleri touchpad kullanımına göre 
 macro(keyboard, mouse, exec) komutları atayabilir.
+
+Kullanıcı arayüzü, dokunuşları handle'lamayı sağlayan kendi query
+dili sayesinde driver içerisindeki mouse, keyboard, shell command
+executer gibi kontrolcüleri çalıştırabilir veya dll import özelliği
+ile kendi fonksiyonlarını tetikleteiblir.
 
 ## Örnekler
 

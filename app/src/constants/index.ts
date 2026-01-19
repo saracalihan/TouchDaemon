@@ -2,6 +2,7 @@ export const CONTROLLERS = {
   mouse: '1',
   keyboard: '2',
   shellExecuter: '3',
+  dllExecuter: '4',
 };
 
 export const CONTROLLER_EVENTS = {
@@ -16,6 +17,7 @@ export const CONTROLLER_EVENTS = {
     click: '3'
   },
   shellExecuter: null,
+  dllExecuter: null,
 };
 
 export const CONTROLLER_CODES = {
@@ -170,5 +172,6 @@ export const CONTROLLER_CODES = {
     'SEARCH': '217',
     'MEDIA': '226',
   },
-  shellExecuter: null
+  shellExecuter: null,
+  dllExecuter: null,
 }

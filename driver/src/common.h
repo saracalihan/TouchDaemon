@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <time.h>
+#include "da.h"
 
 #define TP_SLOTS_COUNT 5
 #define DATA_LEN 27
