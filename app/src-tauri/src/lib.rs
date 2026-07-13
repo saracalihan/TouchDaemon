@@ -135,12 +135,12 @@ async fn start_tcp_connection(
                     }
                 });
 
-                let mut buffer = [0; 1024];
+                let mut buffer = [0u8; 1024];
+                let mut carry: Vec<u8> = Vec::new();
                 loop {
                     match reader.read(&mut buffer).await {
                         Ok(0) => {
                             println!("TCP bağlantısı kapandı");
-                            // Clear the stored sender
                             {
                                 let mut sender_guard = command_sender_clone.lock().unwrap();
                                 *sender_guard = None;
@@ -149,12 +149,34 @@ async fn start_tcp_connection(
                             break;
                         }
                         Ok(n) => {
-                            let data = String::from_utf8_lossy(&buffer[..n]);
-                            let _ = app_handle_clone.emit("tcp-data", data);
+                            carry.extend_from_slice(&buffer[..n]);
+                            loop {
+                                if carry.len() < 3 { break; }
+                                let msg_type = carry[0];
+                                let payload_len = (carry[1] as usize) << 8 | carry[2] as usize;
+                                if carry.len() < 3 + payload_len { break; }
+                                let payload = carry[3..3 + payload_len].to_vec();
+                                carry.drain(..3 + payload_len);
+                                match msg_type {
+                                    0x01 => {
+                                        let data = String::from_utf8_lossy(&payload);
+                                        let _ = app_handle_clone.emit("tcp-data", data.as_ref());
+                                    }
+                                    0x02 => {
+                                        let data = String::from_utf8_lossy(&payload);
+                                        let _ = app_handle_clone.emit("tcp-shell-out", data.as_ref());
+                                    }
+                                    0x04 => {
+                                        let _ = app_handle_clone.emit("tcp-shell-end", ());
+                                    }
+                                    _ => {
+                                        eprintln!("Bilinmeyen mesaj tipi: 0x{:02X}", msg_type);
+                                    }
+                                }
+                            }
                         }
                         Err(e) => {
                             eprintln!("TCP okuma hatası: {}", e);
-                            // Clear the stored sender
                             {
                                 let mut sender_guard = command_sender_clone.lock().unwrap();
                                 *sender_guard = None;

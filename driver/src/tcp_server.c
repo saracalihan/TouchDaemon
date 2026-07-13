@@ -1,6 +1,7 @@
 #include "tcp_server.h"
 #include "controller.h"
 #include "common.h"
+#include <sys/uio.h>
 
 static int server_fd = -1;
 static int client_fd = -1;
@@ -10,7 +11,6 @@ static pthread_t sender_thread;
 
 void sigchld_handler(int signo) {
     (void)signo;
-    while (waitpid(-1, NULL, WNOHANG) > 0) {}
 }
 
 void die(const char *msg) {
@@ -59,7 +59,7 @@ void* tcp_reader_thread(void* arg) {
     int fd = *(int*)arg;
     printf("tcp reader starting for fd: %d\n", fd);
     while(1){
-        char *data = malloc(sizeof(char)*RECV_DATA_LEN);
+        char *data = calloc(1 + 4 + CONTROLLER_VALUE_LEN + 1, 1);
         if(fd == -1){
             sleep(1);
             continue;
@@ -198,7 +198,12 @@ void send_frame_to_client(TouchpadFrame *frame) {
     }
 
     for (int j = 0; j < message_count; j++) {
-        ssize_t sent = send(client_fd, messages[j], DATA_LEN, MSG_NOSIGNAL);
+        uint8_t hdr[3] = { MSG_TOUCH, 0x00, (uint8_t)DATA_LEN };
+        struct iovec iov[2] = {
+            { hdr,        sizeof(hdr) },
+            { messages[j], DATA_LEN  }
+        };
+        ssize_t sent = writev(client_fd, iov, 2);
         if (sent < 0) {
             printf("Client send error, disconnecting\n");
             close(client_fd);
@@ -206,6 +211,41 @@ void send_frame_to_client(TouchpadFrame *frame) {
             pthread_mutex_unlock(&client_mutex);
             break;
         }
+    }
+    pthread_mutex_unlock(&client_mutex);
+}
+
+void send_shell_output_to_client(const char* chunk, size_t len) {
+    pthread_mutex_lock(&client_mutex);
+    if (client_fd == -1) {
+        pthread_mutex_unlock(&client_mutex);
+        return;
+    }
+    uint16_t plen = (uint16_t)len;
+    uint8_t hdr[3] = { MSG_SHELL_OUT, (uint8_t)(plen >> 8), (uint8_t)(plen & 0xFF) };
+    struct iovec iov[2] = {
+        { hdr,              sizeof(hdr) },
+        { (void*)chunk,     len         }
+    };
+    if (writev(client_fd, iov, 2) < 0) {
+        printf("Shell output send error\n");
+        close(client_fd);
+        client_fd = -1;
+    }
+    pthread_mutex_unlock(&client_mutex);
+}
+
+void send_shell_end_to_client(void) {
+    pthread_mutex_lock(&client_mutex);
+    if (client_fd == -1) {
+        pthread_mutex_unlock(&client_mutex);
+        return;
+    }
+    uint8_t hdr[3] = { MSG_SHELL_END, 0x00, 0x00 };
+    if (send(client_fd, hdr, sizeof(hdr), MSG_NOSIGNAL) < 0) {
+        printf("Shell end send error\n");
+        close(client_fd);
+        client_fd = -1;
     }
     pthread_mutex_unlock(&client_mutex);
 }

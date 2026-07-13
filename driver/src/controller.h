@@ -33,6 +33,7 @@ typedef enum {
     CT_KEYBOARD,
     CT_SHELL,
     CT_DLL,
+    CT_DBUS,
 } ControllerType;
 
 typedef enum {
@@ -59,6 +60,7 @@ void key_press(int code);
 void key_release(int code);
 void key_click(int code);
 
+int shell_exec(char cmd[CONTROLLER_VALUE_LEN], shell_output_cb cb, void* userdata);
 int exec_command(ControllerCommand c);
 int exec_str_command(char* c);
 

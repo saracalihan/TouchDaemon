@@ -24,6 +24,8 @@ function App() {
   const [controllerType, setControllerType] = useState<keyof typeof CONTROLLER_EVENTS>("mouse");
   const [controllerEvent, setControllerEvent] = useState<string>();
   const [controllerCode, setControllerCode] = useState<string>();
+  const [shellOutput, setShellOutput] = useState<string>("");
+  const [shellRunning, setShellRunning] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastDrawTime = useRef<number>(0);
@@ -137,6 +139,10 @@ function App() {
       const controllerPrefix = CONTROLLERS[controllerType] ?? '';
       const command = controllerPrefix + value.length.toString().padStart(4, '0') + value;
       console.log(command);
+      if (controllerType === "shellExecuter") {
+        setShellOutput("");
+        setShellRunning(true);
+      }
       await emit("exec-command", command);
     } catch (error) {
       alert(error);
@@ -175,6 +181,14 @@ function App() {
         console.log("TCP Error:", event.payload);
         setConnectionStatus(false);
       });
+
+      await listen<string>("tcp-shell-out", (event) => {
+        setShellOutput(prev => prev + event.payload);
+      });
+
+      await listen("tcp-shell-end", () => {
+        setShellRunning(false);
+      });
     };
 
     setupListeners();
@@ -185,10 +199,10 @@ function App() {
     <main className="container-fluid p-4" style={{ height: '100dvh', overflowY: 'scroll' }}>
       <h1 className="col mb-4">Touchpad Macro Controller</h1>
       <div className="row" style={{ height: '90%' }}>
-        <div className="col-1 box mx-4 ">sidebar</div>
+        {/* <div className="col-1 box mx-4 ">sidebar</div> */}
         <div className="col">
           <div className="row gap-4 mb-4">
-            <div className="col-lg box"></div>
+            {/* <div className="col-lg box"></div> */}
             <div className="col-lg-5 d-flex justify-content-center box">
 
               {
@@ -242,9 +256,14 @@ function App() {
               </div>
             </div>
           </div>
-          <div className="row" >
-            <div className="col box" style={{ height: 535 }}> asd</div>
-          </div>
+          {shellOutput || shellRunning ? (
+            <div className="row mt-4">
+              <div className="col box">
+                <h4>Shell Output {shellRunning && <span style={{ fontSize: 12, opacity: 0.6 }}>(çalışıyor...)</span>}</h4>
+                <pre style={{ maxHeight: 300, overflowY: 'scroll', margin: 0, padding: 8, background: '#111', borderRadius: 4, fontSize: 12 }}>{shellOutput}</pre>
+              </div>
+            </div>
+          ) : null}
 
           {/* <h3>Son Mesaj / Seçili Slot</h3>
       <div style={{

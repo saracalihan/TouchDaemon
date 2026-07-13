@@ -14,6 +14,13 @@
 #define TP_SLOTS_COUNT 5
 #define DATA_LEN 27
 #define EVENT_BUFFER_SIZE 1000
+
+// Server→client message types
+#define MSG_TOUCH     0x01
+#define MSG_SHELL_OUT 0x02
+#define MSG_SHELL_END 0x04
+
+typedef void (*shell_output_cb)(const char* chunk, size_t len, void* userdata);
 #define DEBUG_FMT "slots[%d]->id: %05d, x: %04d, y: %04d, time: %lld\n"
 #define DATA_FMT "%d%05d%04d%04d%lld"
 #define RECV_DATA_LEN 10

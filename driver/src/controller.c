@@ -3,6 +3,7 @@
 */
 
 #include "controller.h"
+#include "tcp_server.h"
 
 int mouse_fd = -1;
 int keyboard_fd = -1;
@@ -43,7 +44,7 @@ int init_keyboard(){
     // Keyboard eventlerini destekle
     ioctl(fd_uinput, UI_SET_EVBIT, EV_KEY);
     ioctl(fd_uinput, UI_SET_EVBIT, EV_SYN);
-    
+
     // Tüm temel klavye tuşlarını destekle
     for (int i = KEY_ESC; i <= KEY_MICMUTE; i++) {
         ioctl(fd_uinput, UI_SET_KEYBIT, i);
@@ -221,24 +222,75 @@ void key_click(int code){
     key_release(code);
 }
 
-int shell_exec(char cmd[CONTROLLER_VALUE_LEN]){
-    int pid = fork();
-    if(pid == -1){
-        printf("[SHELL CONTROLLER ERROR]: SHELL child process could not created: %m\n");
+int shell_exec(char cmd[CONTROLLER_VALUE_LEN], shell_output_cb cb, void* userdata){
+    printf("[SHELL CONTROLLER INFO]: '%s' command executing...\n", cmd);
+    FILE* fp = popen(cmd, "r");
+    if(!fp){
+        printf("[SHELL CONTROLLER ERROR]: popen failed: %m\n");
         return 0;
     }
-
-    // child
-    if(pid == 0){
-        printf("[SHELL CONTROLLER INFO]: '%s' command executing...\n", cmd);
-        int res = system(cmd);
-        if(res==-1){
-            printf("[SHELL CONTROLLER ERROR]: command could not executed: %m\n");
-            return 0;
+    char chunk[256];
+    while(fgets(chunk, sizeof(chunk), fp)){
+        if(cb){
+            size_t n = strlen(chunk);
+            cb(chunk, n, userdata);
         }
-        printf("[SHELL CONTROLLER INFO]: '%s' command executed succesfuly\n", cmd);
     }
-    return 1;
+    int status = pclose(fp);
+    if(status == -1){
+        printf("[SHELL CONTROLLER ERROR]: pclose failed: %m\n");
+        return 0;
+    }
+    printf("[SHELL CONTROLLER INFO]: '%s' exited with status %d\n", cmd, WEXITSTATUS(status));
+    return WEXITSTATUS(status) == 0 ? 1 : 0;
+}
+
+/*
+    DBus value format: "busname,objectpath,interface.method,arg_type:arg_value"
+    Example: "org.freedesktop.Notifications,/org/freedesktop/Notifications,org.freedesktop.Notifications.Notify,string:hello"
+    arg_type is a dbus-send type: string, int32, uint32, boolean, double
+*/
+int dbus_exec(char* value, char* out){
+    char busname[128] = {0};
+    char objpath[128] = {0};
+    char method[128]  = {0};
+
+    char* buf = strdup(value);
+    if(!buf){ printf("[DBUS ERROR]: strdup failed\n"); return 0; }
+
+    char* tok = strtok(buf, ",");
+    if(!tok){ printf("[DBUS ERROR]: missing busname\n"); free(buf); return 0; }
+    strncpy(busname, tok, sizeof(busname) - 1);
+
+    tok = strtok(NULL, ",");
+    if(!tok){ printf("[DBUS ERROR]: missing object path\n"); free(buf); return 0; }
+    strncpy(objpath, tok, sizeof(objpath) - 1);
+
+    tok = strtok(NULL, ",");
+    if(!tok){ printf("[DBUS ERROR]: missing interface.method\n"); free(buf); return 0; }
+    strncpy(method, tok, sizeof(method) - 1);
+
+    char* args = strtok(NULL, "");
+
+    int cmd_len = 64 + strlen(busname) + strlen(objpath) + strlen(method) + (args ? strlen(args) : 0) + 1;
+    char* cmd = malloc(cmd_len);
+    if(!cmd){ printf("[DBUS ERROR]: malloc failed\n"); free(buf); return 0; }
+
+    if(args){
+        snprintf(cmd, cmd_len,
+            "gdbus call --session --dest=%s --object-path=%s --method=%s %s",
+            busname, objpath, method, args);
+    } else {
+        snprintf(cmd, cmd_len,
+            "gdbus call --session --dest=%s --object-path=%s --method=%s",
+            busname, objpath, method);
+    }
+
+    free(buf);
+    printf("[DBUS INFO]: executing: %s\n", cmd);
+    int res = shell_exec(cmd, NULL, NULL);
+    free(cmd);
+    return res;
 }
 
 int dll_exec(char* fn_name, char* args){
@@ -260,6 +312,11 @@ int dll_exec(char* fn_name, char* args){
 }
 
 // TODO: mouse scroll. type 2 (EV_REL), code 8 (REL_WHEEL), value -1/+1
+
+static void shell_send_cb(const char* chunk, size_t len, void* userdata) {
+    (void)userdata;
+    send_shell_output_to_client(chunk, len);
+}
 
 int exec_command(ControllerCommand c){
     printf("value: '%s'\n", c.value);
@@ -323,10 +380,12 @@ int exec_command(ControllerCommand c){
                 printf("[CONTROLLER ERROR]: exec_command invalid SHELL cmd size\n");
                 return 0;
             }
-            if(shell_exec(c.value) ==0){
+            if(shell_exec(c.value, shell_send_cb, NULL) == 0){
                 printf("[CONTROLLER ERROR]: shell_exec error\n");
+                send_shell_end_to_client();
                 return 0;
             }
+            send_shell_end_to_client();
             break;}
         case CT_DLL: {
             if(c.size<=0){
@@ -351,6 +410,29 @@ int exec_command(ControllerCommand c){
             //     printf("[CONTROLLER ERROR]: dll_exec error\n");
             //     return 0;
             // }
+            break;
+        }
+        case CT_DBUS: {
+            if(c.size <= 0){
+                printf("[CONTROLLER ERROR]: exec_command invalid dbus cmd size\n");
+                return 0;
+            }
+            char ek[2] = {c.value[0], 0};
+            int event = atoi(ek);
+            if(event != CT_EXEC){
+                printf("[CONTROLLER ERROR]: dbus_exec only supports CT_EXEC event, got: %d\n", event);
+                return 0;
+            }
+            char* dbus_out = calloc(CONTROLLER_VALUE_LEN, 1);
+            if(!dbus_out){ printf("[CONTROLLER ERROR]: calloc failed\n"); return 0; }
+            int dbus_res = dbus_exec(c.value + 1, dbus_out);
+            if(strlen(dbus_out) > 0)
+                printf("[DBUS OUTPUT]: %s\n", dbus_out);
+            free(dbus_out);
+            if(dbus_res == 0){
+                printf("[CONTROLLER ERROR]: dbus_exec error\n");
+                return 0;
+            }
             break;
         }
         default:

@@ -3,10 +3,36 @@
 Threads:
 - main(init, start tcp)
    - touchpad_thread
+   - macro_engine_thread
    - tcp_reader_thread (set_client üzerinden)
    - tcp_sender_thread (set_client üzerinden)
 
-## TCP Commands
+## Server → Client Protokolü
+
+Her mesaj 3-byte envelope header ile başlar:
+
+```
+---------------------------------
+| type (1B) | length (2B BE) | payload |
+---------------------------------
+```
+
+| type   | isim          | payload           | toplam |
+|--------|---------------|-------------------|--------|
+| `0x01` | MSG_TOUCH     | 27-byte slot str  | 30 B   |
+| `0x02` | MSG_SHELL_OUT | UTF-8 çıktı chunk | 3+N B  |
+| `0x04` | MSG_SHELL_END | boş               | 3 B    |
+
+**Touch frame payload formatı** (`%d%05d%04d%04d%lld`, 27 byte):
+
+```
+| slot(1) | id(5) | x(4) | y(4) | time(13) |
+```
+
+Shell komutu çalışırken çıktı `MSG_SHELL_OUT` chunk'ları hâlinde akar;
+komut bitince `MSG_SHELL_END` gönderilir.
+
+## Client → Server Protokolü (TCP Commands)
 
 ```
 -------------------------------------
@@ -25,6 +51,8 @@ Controllers:
  - Mouse: `1`
  - Keyboard: `2`
  - Shell Executer: `3`
+ - DLL: `4`
+ - D-Bus: `5`
 
 ### Values
 

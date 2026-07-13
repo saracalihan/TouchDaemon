@@ -25,13 +25,12 @@ ile kendi fonksiyonlarını tetikleteiblir.
   haraket ettirilerek ses düzeyi değiştirilir
 
 ## Sistem
-- [Driver]: Yazılan kernel modülü, touchpad'in dinlenmesinden,
-            tcp üzerinden konuşulmasından ve komut çalıştırılmasından
-            sorumludur.
-- [Sunucu]: Driver ile arayüz arasında aracılık yapar.
-            Tcp isteğini WebSocket'e dönüştürür.
-- [Panel]: Touchpad'in mevcut durumunu gösterir.
-           Kullanıcı mevcut macroları görüntüler ve yeni akışları oluşturabilir.
+- [Driver]: Touchpad'i dinler, TCP üzerinden parmak konumlarını iletir ve
+            mouse, keyboard, shell, D-Bus, DLL gibi kontrolcüler aracılığıyla
+            komut çalıştırır. Shell komutlarının çıktısını da istemciye geri gönderir.
+- [Panel]: Tauri + React tabanlı kontrol paneli. Touchpad'in anlık durumunu
+           canvas üzerinde gösterir; macro ve komut gönderimi, shell çıktısını
+           görüntüleme imkânı sunar.
 
 # License
 This project is licensed under the [MIT License](./LICENSE).

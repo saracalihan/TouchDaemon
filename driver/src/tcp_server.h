@@ -20,6 +20,8 @@ void set_client(int new_client_fd);
 int get_client();
 void disconnect_client(void);
 void send_frame_to_client(TouchpadFrame *frame);
+void send_shell_output_to_client(const char* chunk, size_t len);
+void send_shell_end_to_client(void);
 void cleanup_tcp_server(void);
 int get_server_fd(void);
 
