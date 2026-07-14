@@ -6,6 +6,7 @@
 #include "tcp_server.h"
 
 int mouse_fd = -1;
+int abs_mouse_fd = -1;
 int keyboard_fd = -1;
 Dlls dlls = {0};
 
@@ -16,11 +17,15 @@ int init_mouse(){
         return 1;
     }
 
-    // Sol ve sağ click eventlerini destekle
     ioctl(fd_uinput, UI_SET_EVBIT, EV_KEY);
     ioctl(fd_uinput, UI_SET_KEYBIT, BTN_LEFT);
     ioctl(fd_uinput, UI_SET_KEYBIT, BTN_RIGHT);
     ioctl(fd_uinput, UI_SET_EVBIT, EV_SYN);
+
+    // Relative hareket (REL_X, REL_Y)
+    ioctl(fd_uinput, UI_SET_EVBIT, EV_REL);
+    ioctl(fd_uinput, UI_SET_RELBIT, REL_X);
+    ioctl(fd_uinput, UI_SET_RELBIT, REL_Y);
 
     struct uinput_setup usetup;
     memset(&usetup, 0, sizeof(usetup));
@@ -32,6 +37,49 @@ int init_mouse(){
     ioctl(fd_uinput, UI_DEV_SETUP, &usetup);
     ioctl(fd_uinput, UI_DEV_CREATE);
     return fd_uinput;
+}
+
+int init_abs_mouse(){
+    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    if (fd < 0) {
+        perror("open uinput for abs mouse");
+        return -1;
+    }
+
+    // X11/Wayland'ın absolute pointer olarak tanıması için INPUT_PROP_POINTER gerekli
+    ioctl(fd, UI_SET_PROPBIT, INPUT_PROP_POINTER);
+
+    ioctl(fd, UI_SET_EVBIT, EV_ABS);
+    ioctl(fd, UI_SET_ABSBIT, ABS_X);
+    ioctl(fd, UI_SET_ABSBIT, ABS_Y);
+
+    // BTN_LEFT olmadan X11 bu cihazı pointer olarak kabul etmez
+    ioctl(fd, UI_SET_EVBIT, EV_KEY);
+    ioctl(fd, UI_SET_KEYBIT, BTN_LEFT);
+
+    ioctl(fd, UI_SET_EVBIT, EV_SYN);
+
+    struct uinput_abs_setup abs_x = {
+        .code = ABS_X,
+        .absinfo = { .minimum = 0, .maximum = 32767, .resolution = 1 }
+    };
+    struct uinput_abs_setup abs_y = {
+        .code = ABS_Y,
+        .absinfo = { .minimum = 0, .maximum = 32767, .resolution = 1 }
+    };
+    ioctl(fd, UI_ABS_SETUP, &abs_x);
+    ioctl(fd, UI_ABS_SETUP, &abs_y);
+
+    struct uinput_setup usetup;
+    memset(&usetup, 0, sizeof(usetup));
+    usetup.id.bustype = BUS_USB;
+    usetup.id.vendor  = 0x1;
+    usetup.id.product = 0x3;
+    strcpy(usetup.name, DEVICE_NAME_PREFIX"-abs-mouse");
+
+    ioctl(fd, UI_DEV_SETUP, &usetup);
+    ioctl(fd, UI_DEV_CREATE);
+    return fd;
 }
 
 int init_keyboard(){
@@ -92,6 +140,7 @@ void init_dll(){
 
 void init_controllers(){
     mouse_fd = init_mouse();
+    abs_mouse_fd = init_abs_mouse();
     keyboard_fd = init_keyboard();
     init_shell();
     init_dll();
@@ -114,6 +163,10 @@ void cleanup_mouse(){
     if(close(mouse_fd)<0){
         perror("cleanup_mouse");
         exit(EXIT_FAILURE);
+    }
+    if(abs_mouse_fd >= 0){
+        ioctl(abs_mouse_fd, UI_DEV_DESTROY);
+        close(abs_mouse_fd);
     }
 }
 
@@ -176,6 +229,52 @@ void mouse_click(int code){
     mouse_press(code);
     usleep(20000); // 20ms
     mouse_release(code);
+}
+
+void mouse_move_rel(int dx, int dy){
+    struct input_event ev;
+    memset(&ev, 0, sizeof(ev));
+    gettimeofday(&ev.time, NULL);
+
+    ev.type  = EV_REL;
+    ev.code  = REL_X;
+    ev.value = dx;
+    write(mouse_fd, &ev, sizeof(ev));
+
+    ev.type  = EV_REL;
+    ev.code  = REL_Y;
+    ev.value = dy;
+    write(mouse_fd, &ev, sizeof(ev));
+
+    ev.type  = EV_SYN;
+    ev.code  = SYN_REPORT;
+    ev.value = 0;
+    write(mouse_fd, &ev, sizeof(ev));
+}
+
+void mouse_move_abs(int x, int y){
+    if(abs_mouse_fd < 0){
+        printf("[CONTROLLER ERROR]: abs_mouse_fd not initialized\n");
+        return;
+    }
+    struct input_event ev;
+    memset(&ev, 0, sizeof(ev));
+    gettimeofday(&ev.time, NULL);
+
+    ev.type  = EV_ABS;
+    ev.code  = ABS_X;
+    ev.value = x;
+    write(abs_mouse_fd, &ev, sizeof(ev));
+
+    ev.type  = EV_ABS;
+    ev.code  = ABS_Y;
+    ev.value = y;
+    write(abs_mouse_fd, &ev, sizeof(ev));
+
+    ev.type  = EV_SYN;
+    ev.code  = SYN_REPORT;
+    ev.value = 0;
+    write(abs_mouse_fd, &ev, sizeof(ev));
 }
 
 /*
@@ -323,28 +422,55 @@ int exec_command(ControllerCommand c){
     switch(c.controller){
         case CT_MOUSE:{
             char ek[2] = {c.value[0], 0};
-            char bk[2] = {c.value[1], 0};
-            int event = atoi(&ek);
-            int button = atoi(&bk);
-            printf("event: %d, button: %d\n", event, button);
-
-            if(button != MOUSE_LEFT && button != MOUSE_RIGTH){
-                printf("[CONTROLLER ERROR]: exec_command MouseKey value:'%d' MOUSE_LEFT:%d, MOUSE_RIGTH:%d'\n", button, MOUSE_LEFT, MOUSE_RIGTH);
-                return 0;
-            }
+            int event = atoi(ek);
+            printf("event: %d\n", event);
 
             switch(event){
                 case CT_PRESS:
-                    mouse_press(button == MOUSE_LEFT ? BTN_LEFT : BTN_RIGHT);
-                    break;
                 case CT_RELEASE:
-                    mouse_release(button == MOUSE_LEFT ? BTN_LEFT : BTN_RIGHT);
+                case CT_CLICK: {
+                    char bk[2] = {c.value[1], 0};
+                    int button = atoi(bk);
+                    if(button != MOUSE_LEFT && button != MOUSE_RIGTH){
+                        printf("[CONTROLLER ERROR]: exec_command MouseKey value:'%d'\n", button);
+                        return 0;
+                    }
+                    if(event == CT_PRESS)
+                        mouse_press(button == MOUSE_LEFT ? BTN_LEFT : BTN_RIGHT);
+                    else if(event == CT_RELEASE)
+                        mouse_release(button == MOUSE_LEFT ? BTN_LEFT : BTN_RIGHT);
+                    else
+                        mouse_click(button == MOUSE_LEFT ? BTN_LEFT : BTN_RIGHT);
                     break;
-                case CT_CLICK:
-                    mouse_click(button == MOUSE_LEFT ? BTN_LEFT : BTN_RIGHT);
+                }
+                case CT_MOVE: {
+                    // value format: "[mode][x],[y]"  mode: 1=relative, 2=absolute
+                    char mode_ch[2] = {c.value[1], 0};
+                    int mode = atoi(mode_ch);
+                    int x = 0, y = 0;
+                    if(sscanf(c.value + 2, "%d,%d", &x, &y) != 2){
+                        printf("[CONTROLLER ERROR]: CT_MOVE parse failed: '%s'\n", c.value);
+                        return 0;
+                    }
+                    printf("CT_MOVE mode:%d x:%d y:%d\n", mode, x, y);
+                    if(mode == 1)
+                        mouse_move_rel(x, y);
+                    else if(mode == 2)
+                        mouse_move_abs(x, y);
+                    else{
+                        printf("[CONTROLLER ERROR]: CT_MOVE unknown mode: %d\n", mode);
+                        return 0;
+                    }
                     break;
+                }
+                case CT_GET_INFO: {
+                    char cmd[] = "xdotool getmouselocation --shell";
+                    shell_exec(cmd, shell_send_cb, NULL);
+                    send_shell_end_to_client();
+                    break;
+                }
                 default:
-                    printf("[CONTROLLER ERROR]: exec_command ControllerEvent value:'%d'. CT_PRESS:%d, CT_RELEASE:%d, CT_CLICK:%d'\n", event,CT_PRESS,CT_RELEASE, CT_CLICK);
+                    printf("[CONTROLLER ERROR]: exec_command ControllerEvent value:'%d'\n", event);
                     return 0;
             }
             break;}

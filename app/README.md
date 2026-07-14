@@ -43,6 +43,16 @@ Panel, driver ile TCP üzerinden (localhost:8081) haberleşir.
 | `4`        | DLL        |
 | `5`        | D-Bus      |
 
+**Mouse event'leri** (controller=1):
+
+| event | kod | value                  |
+|-------|-----|------------------------|
+| press     | `1` | `[event][button]` — button: 1=sol, 2=sağ |
+| release   | `2` | `[event][button]`      |
+| click     | `3` | `[event][button]`      |
+| move      | `4` | `[event][mode][x],[y]` — mode: 1=relative, 2=absolute (0-32767) |
+| get_info  | `6` | `[event]` — yanıt `tcp-shell-out` ile gelir |
+
 ## Tauri Event'leri
 
 | event           | yön             | açıklama                    |

@@ -42,6 +42,7 @@ typedef enum {
     CT_CLICK,
     CT_MOVE,
     CT_EXEC,
+    CT_GET_INFO
 } ControllerEvent;
 
 typedef enum {
@@ -55,6 +56,8 @@ void cleanup_controllers();
 void mouse_press(int code);
 void mouse_release(int code);
 void mouse_click(int code);
+void mouse_move_rel(int dx, int dy);
+void mouse_move_abs(int x, int y);
 
 void key_press(int code);
 void key_release(int code);

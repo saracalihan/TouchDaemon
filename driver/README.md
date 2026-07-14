@@ -62,14 +62,42 @@ Controllers:
 -------------------------------------
 | controller | value length | value |
 -------------------------------------
+|      1     |    xxxx    | [event][...]  |
+-------------------------------------
+```
 
------------------------------------------
-|      1     |    0002    | [1,2,3][1,2] |
------------------------------------------
+| event | kod | value formatı          | açıklama                        |
+|-------|-----|------------------------|---------------------------------|
+| press     | `1` | `[event][button]`  | `button`: 1=sol, 2=sağ          |
+| release   | `2` | `[event][button]`  | `button`: 1=sol, 2=sağ          |
+| click     | `3` | `[event][button]`  | `button`: 1=sol, 2=sağ          |
+| move      | `4` | `[event][mode][x],[y]` | `mode`: 1=relative, 2=absolute |
+| get_info  | `6` | `[event]`          | fare konumunu istemciye döner   |
 
-------------------------------------------------------------------
-|      1     |    0002    | [press, release, click][Left, Right] |
-------------------------------------------------------------------
+**CT_MOVE örnekleri:**
+
+```
+# Relative — fareyi 100px sağa, 50px aşağı kaydır
+"1 0009 411100,50"
+ ^        ^ ^^^^ ^^
+ ctrl  len  e m  x,y
+            4 1  (relative)
+
+# Absolute — fareyi (16383, 8192) koordinatına taşı  [0-32767 aralığı]
+"1 0013 4216383,8192"
+             e m  x    ,y
+             4 2  (absolute)
+```
+
+`CT_GET_INFO` (event=6): fare konumunu `xdotool getmouselocation --shell` ile okur,
+çıktıyı `MSG_SHELL_OUT` / `MSG_SHELL_END` akışı olarak istemciye gönderir.
+
+```
+# Örnek çıktı:
+X=1234
+Y=567
+SCREEN=0
+WINDOW=12345678
 ```
 
 **Shell Executer**:
