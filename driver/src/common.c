@@ -13,22 +13,29 @@ void init_event_buffer(void) {
 }
 
 
-void _get_frame_from_buffer(TouchpadFrame *frame){
-    int read_index = (buffer.head - 1 + EVENT_BUFFER_SIZE) % EVENT_BUFFER_SIZE;
-    *frame = buffer.frames[read_index];
+inline int calculate_prev_frame_index(int head){
+    return (head - 1 + EVENT_BUFFER_SIZE) % EVENT_BUFFER_SIZE;
 }
 
-void add_frame_to_buffer(TouchpadFrame *frame) {
+inline int calculate_next_frame_index(int head){
+    return (head + 1) % EVENT_BUFFER_SIZE;
+}
+
+void _get_frame_from_buffer(TouchpadFrame *frame){
+    *frame = buffer.frames[calculate_prev_frame_index(buffer.head)];
+}
+
+void add_frame_to_buffer(TouchpadFrame frame) {
     pthread_mutex_lock(&buffer.mutex);
 
-    Slot cur_slot = frame->slots[frame->slot_index]; 
+    Slot cur_slot = frame.slots[frame.slot_index];
     if(cur_slot.id != -1){
         TouchpadFrame last_frame;
         _get_frame_from_buffer(&last_frame);
-        last_moves[frame->slot_index] = last_frame.slots[frame->slot_index]; 
+        last_moves[frame.slot_index] = last_frame.slots[frame.slot_index]; 
     }
-    buffer.frames[buffer.head] = *frame;
-    buffer.head = (buffer.head + 1) % EVENT_BUFFER_SIZE;
+    buffer.frames[buffer.head] = frame;
+    buffer.head = calculate_next_frame_index(buffer.head);
     if(buffer.count < EVENT_BUFFER_SIZE){
         buffer.count++;
     }
@@ -56,6 +63,10 @@ void cleanup_event_buffer(void) {
 
 int get_frame_count(){
    return buffer.count;
+}
+
+EventBuffer* get_event_buffer(){
+    return &buffer;
 }
 
 Slot* get_last_move(int i){

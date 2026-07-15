@@ -16,7 +16,9 @@ typedef enum {
     OP_ON_BOTTOM,
     OP_ON_RIGHT,
     OP_ON_LEFT,
-    OP_HOLD
+    OP_HOLD,
+    OP_VSLIDE,
+    OP_HSLIDE
 } QueryOperator;
 
 // Forward declaration
@@ -35,6 +37,7 @@ typedef struct{
     Slot slot;
     Slot* old_slot;
     TouchpadFrame frame;
+    EventBuffer* event_buffer;
 } QueryCtx;
 
 // Macro Definition Structure

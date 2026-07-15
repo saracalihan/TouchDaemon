@@ -68,7 +68,7 @@ void* touchpad_event_thread(void* arg) {
                 }
             }
 
-            add_frame_to_buffer(&current_frame);
+            add_frame_to_buffer(current_frame);
         }
     }
 

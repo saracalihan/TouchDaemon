@@ -12,6 +12,10 @@
 #define DOUBLE_TAP_AREA 100
 #define LOWER_SECTION_HEIGHT 200
 #define HOLD_TRASHOLD_MS 400
+#define SLIDE_VERTICAL_BUFFER 10
+#define SLIDE_HORIZENTAL_BUFFER 10
+#define SLIDE_TIME 600
+#define SLIDE_PREV_EVENTS 15
 
 // TODO: change it to dhe native Command type
 #define COMMAND_LEFT_CLICK "1000231"
@@ -39,6 +43,54 @@ bool on_right(Slot* slot){
 
 bool on_left(Slot* slot){
     return slot->x < WIDTH/2;
+}
+
+bool on_vertical_slide(Slot* slot, QueryCtx* ctx){
+    slot = &ctx->slot;
+    if(slot->id == -1){
+        return false;
+    }
+    if(ctx->event_buffer->count < SLIDE_PREV_EVENTS){
+        return false;
+    }
+
+    int track_id = slot->id;
+    int slot_pos = ctx->frame.slot_index;
+    int head = ctx->event_buffer->head;
+    for(int i = 1; i < SLIDE_PREV_EVENTS; i++){
+        Slot* older = &ctx->event_buffer->frames[calculate_prev_frame_index(head - i)].slots[slot_pos];
+        if(older->id != track_id){
+            return false;
+        }
+        if(abs(slot->x - older->x) > SLIDE_VERTICAL_BUFFER || (slot->time - older->time) > SLIDE_TIME){
+            return false;
+        }
+    }
+    return true;
+}
+
+bool on_horizental_slide(Slot* slot, QueryCtx* ctx){
+    slot = &ctx->slot;
+    if(slot->id == -1){
+        return false;
+    }
+    if(ctx->event_buffer->count < SLIDE_PREV_EVENTS){
+        return false;
+    }
+
+    int track_id = slot->id;
+    int slot_pos = ctx->frame.slot_index;
+    int head = ctx->event_buffer->head;
+    for(int i = 1; i < SLIDE_PREV_EVENTS; i++){
+        Slot* older = &ctx->event_buffer->frames[calculate_prev_frame_index(head - i)].slots[slot_pos];
+        if(older->id != track_id){
+            return false;
+        }
+        if(abs(slot->y - older->y) > SLIDE_HORIZENTAL_BUFFER || (slot->time - older->time) > SLIDE_TIME){
+            return false;
+        }
+    }
+    return true;
 }
 
 bool hold(Slot* slot, Slot* old_slot, int time){
@@ -114,7 +166,12 @@ bool evaluate_query(QueryNode* node, QueryCtx* ctx) {
         case OP_ON_LEFT: {
             return on_left(&ctx->slot);
         }
-
+        case OP_VSLIDE: {
+            return on_vertical_slide(&ctx->slot, ctx);
+        }
+        case OP_HSLIDE: {
+            return on_horizental_slide(&ctx->slot, ctx);
+        }
         default:
             ERROR("Invalid operator '%d'!\n", node->operator);
             return false;
@@ -192,6 +249,8 @@ void* macro_engine_thread(void* arg){
         ctx.slot = slot;
         ctx.old_slot = old_slot;
         ctx.frame = frame;
+        EventBuffer* event_buffer = get_event_buffer();
+        ctx.event_buffer = event_buffer;
 
 
         if (evaluate_query(right_click_query, &ctx)) {
@@ -226,6 +285,17 @@ void* macro_engine_thread(void* arg){
         //     printf("[MACRO] Complex condition met\n");
         // }
         // free_query_node(complex_query);
+
+
+        if (evaluate_query(create_query_node(OP_VSLIDE), &ctx)) {
+            // Execute some command
+            printf("[MACRO] VERTICAL SLIDE met\n");
+        }
+
+        if (evaluate_query(create_query_node(OP_HSLIDE), &ctx)) {
+            // Execute some command
+            printf("[MACRO] HORİZONTAL SLIDE met\n");
+        }
     }
     free_query_node(right_click_query);
     free_query_node(double_tap_query);

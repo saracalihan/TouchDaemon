@@ -78,11 +78,15 @@ extern volatile bool running;
 
 // Event buffer functions
 void init_event_buffer(void);
-void add_frame_to_buffer(TouchpadFrame *frame);
+void add_frame_to_buffer(TouchpadFrame frame);
 bool get_frame_from_buffer(TouchpadFrame *frame);
 Slot get_slot_from_frame(TouchpadFrame *frame);
 int get_frame_count();
+int calculate_prev_frame_index(int head);
+int calculate_next_frame_index(int head);
 Slot* get_last_move(int slot_index);
+EventBuffer* get_event_buffer(void);
 void cleanup_event_buffer(void);
+
 
 #endif // COMMON_H
